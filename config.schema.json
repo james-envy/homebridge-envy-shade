@@ -1,18 +1,18 @@
 {
-  "pluginAlias": "EnvyLighting",
+  "pluginAlias": "EnvyShade",
   "pluginType": "platform",
   "singular": true,
   "schema": {
     "type": "object",
     "properties": {
-      "lighting_address": {
-        "title": "Lighting Address",
+      "shade_address": {
+        "title": "Shade Address",
         "type": "string",
         "required": true,
-        "default": "c-bus; gc=192.168.0.240; application = 56"
+        "default": "somfy; gc=192.168.253.193: lighting; c-bus"
       },
-      "lighting_table": {
-        "title": "Lighting Scene",
+      "shade_table": {
+        "title": "Shade Scene",
         "type": "array",
         "items": {
           "title": "",
@@ -27,17 +27,12 @@
               "title": "Device Type",
               "type": "string",
               "required": true,
+              "default": "Shade",
               "oneOf": [
                 {
-                  "title": "Switch",
+                  "title": "Shade",
                   "enum": [
-                    "Switch"
-                  ]
-                },
-                {
-                  "title": "Dimmer",
-                  "enum": [
-                    "Dimmer"
+                    "Shade"
                   ]
                 }
               ]
@@ -53,13 +48,13 @@
     }
   },
   "layout": [
-    "lighting_address",
+    "shade_address",
     {
       "type": "section",
-      "title": "Lighting Table",
+      "title": "Shade Table",
       "items": [
         {
-          "key": "lighting_table",
+          "key": "shade_table",
           "type": "array",
           "notitle": true,
           "items": [
@@ -69,15 +64,15 @@
               "flex-direction": "row",
               "items": [
                 {
-                  "key": "lighting_table[].name",
+                  "key": "shade_table[].name",
                   "flex": "1 1 60%"
                 },
                 {
-                  "key": "lighting_table[].device_type",
+                  "key": "shade_table[].device_type",
                   "flex": "1 1 20%"
                 },
                 {
-                  "key": "lighting_table[].address",
+                  "key": "shade_table[].address",
                   "flex": "1 1 20%"
                 }
               ]

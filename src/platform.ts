@@ -1,8 +1,7 @@
 import { API, DynamicPlatformPlugin, Logger, PlatformAccessory, PlatformConfig, Service, Characteristic } from 'homebridge';
 
 import { PLATFORM_NAME, PLUGIN_NAME } from './settings';
-import { SwitchAccessory } from './device_types/switch';
-import { DimmerAccessory } from './device_types/dimmer';
+import { ShadeAccessory } from './device_types/shade';
 import { Socket } from 'net';
 
 /**
@@ -23,8 +22,7 @@ export class ExampleHomebridgePlatform implements DynamicPlatformPlugin {
   queue : string[] = [];
   queue_ready = false;
 
-  switches = {};
-  dimmers = {};
+  shades = {};
 
   constructor(
     public readonly log: Logger,
@@ -52,12 +50,12 @@ export class ExampleHomebridgePlatform implements DynamicPlatformPlugin {
       log.debug('Executed didFinishLaunching callback');
       // run the method to discover / register your devices as accessories
       this.discoverDevices();
-      this.socket.connect(12323);
+      this.socket.connect(12324);
     });
   }
 
   reconnect() {
-    this.socket.connect(12323);
+    this.socket.connect(12324);
   }
 
   on_close() {
@@ -76,29 +74,19 @@ export class ExampleHomebridgePlatform implements DynamicPlatformPlugin {
     while (index !== -1) {
       const line = this.socket_buffer.substring(0, index);
       this.log.error('read', line);
-      const dimmer_set_matcher = /Lighting_controller::DimmerSet\(Address1 = (.*), DimmerLevel = (.*), FadeTime = (.*)\)/;
-      const dimmer_set_matched = dimmer_set_matcher.exec(line);
-      if (dimmer_set_matched !== null) {
-        //this.log.error('dimmer_set', dimmer_set_matched[1], dimmer_set_matched[2]);
-        if (this.dimmers[dimmer_set_matched[1]] !== undefined) {
-          this.dimmers[dimmer_set_matched[1]].updateLevel(parseInt(dimmer_set_matched[2], 10));
+      const shade_set_matcher = /Shade_controller::ShadePosition\(Address1 = (.*), ShadeLevel = (.*)\)/;
+      const shade_set_matched = shade_set_matcher.exec(line);
+      if (shade_set_matched !== null) {
+        //this.log.error('shade_set', shade_set_matched[1], shade_set_matched[2]);
+        if (this.shades[shade_set_matched[1]] !== undefined) {
+          this.shades[shade_set_matched[1]].updateShadeLevel(parseInt(shade_set_matched[2], 10));
         }
       }
-      const switch_matcher = /Lighting_controller::Switch(.*)\(Address1 = (.*)\)/;
-      const switch_matched= switch_matcher.exec(line);
-      if (switch_matched !== null) {
-        if (switch_matched[1] === 'On') {
-          //this.log.error('switch_on', switch_matched[2]);
-          if (this.switches[switch_matched[2]] !== undefined) {
-            this.switches[switch_matched[2]].updateOn(true);
-          }
-        }
-        if (switch_matched[1] === 'Off') {
-          //this.log.error('switch_off', switch_matched[2]);
-          if (this.switches[switch_matched[2]] !== undefined) {
-            this.switches[switch_matched[2]].updateOn(false);
-          }
-        }
+      const pong_matcher = /Shade_controller::Ping\(\)/;
+      const pong_matched= pong_matcher.exec(line);
+      if (pong_matched !== null) {
+        //this.log.error('ping');
+        this.enqueue('Shade_controller::Pong()');
       }
 
       //this.log.error('remaining "', this.socket_buffer.substring(index + 1), '"');
@@ -130,12 +118,9 @@ export class ExampleHomebridgePlatform implements DynamicPlatformPlugin {
 
   on_ready() {
     this.log.error('ready');
-    this.enqueue('Lighting_controller::Configure(Lighting_Address = ' + this.config.lighting_address + ')');
-    for (const address in this.switches) {
-      this.enqueue('Lighting_controller::ConfigureSwitch(Address1 = ' + address + ')');
-    }
-    for (const address in this.dimmers) {
-      this.enqueue('Lighting_controller::ConfigureDimmer(Address1 = ' + address + ')');
+    this.enqueue('Shade_controller::Configure(Shade_Address = ' + this.config.shade_address + ')');
+    for (const address in this.shades) {
+      this.enqueue('Shade_controller::ConfigureShade(Address1 = ' + address + ')');
     }
     this.on_drain();
   }
@@ -164,14 +149,14 @@ export class ExampleHomebridgePlatform implements DynamicPlatformPlugin {
   discoverDevices() {
 
     // loop over the discovered devices and register each one if it has not already been registered
-    for (const device of this.config.lighting_table) {
+    for (const device of this.config.shade_table) {
 
       // generate a unique id for the accessory this should be generated from
       // something globally unique, but constant, for example, the device serial
       // number or MAC address
-      this.log.error('lighting_table[].name', device.name);
-      this.log.error('lighting_table[].device_type', device.device_type);
-      this.log.error('lighting_table[].address', device.address);
+      this.log.error('shade_table[].name', device.name);
+      this.log.error('shade_table[].device_type', device.device_type);
+      this.log.error('shade_table[].address', device.address);
       const uuid = this.api.hap.uuid.generate(device.device_type + device.address);
 
       // see if an accessory with the same uuid has already been registered and restored from
@@ -188,11 +173,8 @@ export class ExampleHomebridgePlatform implements DynamicPlatformPlugin {
 
         // create the accessory handler for the restored accessory
         // this is imported from `platformAccessory.ts`
-        if (device.device_type === 'Switch') {
-          this.switches[device.address] = new SwitchAccessory(this, existingAccessory);
-        }
-        if (device.device_type === 'Dimmer') {
-          this.dimmers[device.address] = new DimmerAccessory(this, existingAccessory);
+        if (device.device_type === 'Shade') {
+          this.shades[device.address] = new ShadeAccessory(this, existingAccessory);
         }
 
         // it is possible to remove platform accessories at any time using `api.unregisterPlatformAccessories`, eg.:
@@ -212,11 +194,8 @@ export class ExampleHomebridgePlatform implements DynamicPlatformPlugin {
 
         // create the accessory handler for the newly create accessory
         // this is imported from `platformAccessory.ts`
-        if (device.device_type === 'Switch') {
-          this.switches[device.address] = new SwitchAccessory(this, accessory);
-        }
-        if (device.device_type === 'Dimmer') {
-          this.dimmers[device.address] = new DimmerAccessory(this, accessory);
+        if (device.device_type === 'Shade') {
+          this.shades[device.address] = new ShadeAccessory(this, accessory);
         }
 
         // link the accessory to your platform
