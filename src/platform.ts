@@ -1,7 +1,8 @@
-import { API, DynamicPlatformPlugin, Logger, PlatformAccessory, PlatformConfig, Service, Characteristic } from 'homebridge';
+import type { API, Characteristic, DynamicPlatformPlugin, Logging, PlatformAccessory, PlatformConfig, Service } from 'homebridge';
 
-import { PLATFORM_NAME, PLUGIN_NAME } from './settings';
-import { ShadeAccessory } from './device_types/shade';
+import { ShadeAccessory } from './device_types/shade.js';
+import { PLATFORM_NAME, PLUGIN_NAME } from './settings.js';
+
 import { Socket } from 'net';
 
 /**
@@ -10,8 +11,8 @@ import { Socket } from 'net';
  * parse the user config and discover/register accessories with Homebridge.
  */
 export class ExampleHomebridgePlatform implements DynamicPlatformPlugin {
-  public readonly Service: typeof Service = this.api.hap.Service;
-  public readonly Characteristic: typeof Characteristic = this.api.hap.Characteristic;
+  public readonly Service: typeof Service;
+  public readonly Characteristic: typeof Characteristic;
 
   // this is used to track restored cached accessories
   public readonly accessories: PlatformAccessory[] = [];
@@ -19,16 +20,36 @@ export class ExampleHomebridgePlatform implements DynamicPlatformPlugin {
   socket = new Socket;
   socket_buffer = '';
 
+  pong_timeout = () => {
+    this.socket.destroy();
+  };
+  
+  pong_timer = setTimeout(this.pong_timeout, 15000);
+
+  ping_timeout = () => {
+    this.enqueue('Shade_controller::Ping()');
+    this.pong_timer = setTimeout(this.pong_timeout, 15000);
+    this.ping_timer = setTimeout(this.ping_timeout, 30000);
+  };
+  
+  ping_timer = setTimeout(this.ping_timeout, 30000);
+
   queue : string[] = [];
   queue_ready = false;
 
   shades = {};
 
   constructor(
-    public readonly log: Logger,
+    public readonly log: Logging,
     public readonly config: PlatformConfig,
     public readonly api: API,
   ) {
+    this.Service = api.hap.Service;
+    this.Characteristic = api.hap.Characteristic;
+
+    clearTimeout(this.ping_timer);
+    clearTimeout(this.pong_timer);
+
     this.log.debug('Finished initializing platform:', this.config.name);
 
     this.socket.setEncoding('utf8');
@@ -59,6 +80,8 @@ export class ExampleHomebridgePlatform implements DynamicPlatformPlugin {
   }
 
   on_close() {
+    clearTimeout(this.ping_timer);
+    clearTimeout(this.pong_timer);
     this.log.error('close');
     setTimeout(this.reconnect.bind(this), 10000);
   }
@@ -82,11 +105,18 @@ export class ExampleHomebridgePlatform implements DynamicPlatformPlugin {
           this.shades[shade_set_matched[1]].updateShadeLevel(parseInt(shade_set_matched[2], 10));
         }
       }
-      const pong_matcher = /Shade_controller::Ping\(\)/;
-      const pong_matched= pong_matcher.exec(line);
-      if (pong_matched !== null) {
+
+      const ping_matcher = /Shade_controller::Ping\(\)/;
+      const ping_matched= ping_matcher.exec(line);
+      if (ping_matched !== null) {
         //this.log.error('ping');
         this.enqueue('Shade_controller::Pong()');
+      }
+
+      const pong_matcher = /Shade_controller::Pong\(\)/;
+      const pong_matched= pong_matcher.exec(line);
+      if (pong_matched !== null) {
+        clearTimeout(this.pong_timer);
       }
 
       //this.log.error('remaining "', this.socket_buffer.substring(index + 1), '"');
@@ -117,6 +147,7 @@ export class ExampleHomebridgePlatform implements DynamicPlatformPlugin {
   // }
 
   on_ready() {
+    this.ping_timer = setTimeout(this.ping_timeout, 30000);
     this.log.error('ready');
     this.enqueue('Shade_controller::Configure(Shade_Address = ' + this.config.shade_address + ')');
     for (const address in this.shades) {
